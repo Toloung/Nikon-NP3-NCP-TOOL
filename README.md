@@ -4,14 +4,22 @@ A small Windows/Python utility for working with Nikon Picture Control `.NP3` and
 
 This project was tested with a Nikon Z5 workflow.
 
+## Chinese User Guide
+
+For Chinese installation and step-by-step usage instructions, see:
+
+- [中文使用说明](中文使用说明.md)
+
 ## Features
 
 - Repair NP3/NCP files by rebuilding them from a known-good camera-exported template.
 - Save repaired files directly to the next open `PICCON##` slot on an SD card.
 - Convert Photoshop/Lightroom XMP preset metadata into Nikon-style NP3/NCP output.
+- Export NP3/NCP files to approximate Adobe XMP presets.
 - Browse a local folder of premade Nikon recipe NP3 files.
 - Preview XMP conversions, NP3/NCP repairs, and premade recipes against a generated sample scene or your own JPG/PNG.
 - Rotate preview images without modifying the original image file.
+- Launch a modern Chinese PySide6 desktop interface, while keeping the original Tkinter interface available.
 
 ## Important Format Note
 
@@ -48,7 +56,19 @@ python -m pip install -r requirements.txt
 
 ## Launch
 
-Use either:
+For the Chinese PySide6 desktop app, use either:
+
+```powershell
+python pyside_converter.py
+```
+
+or double-click:
+
+```text
+launch_pyside_converter.bat
+```
+
+The original Tkinter interface is still available:
 
 ```powershell
 python photo_preset_to_nikon.py
@@ -118,6 +138,12 @@ Convert a folder of XMP presets:
 python photo_preset_to_nikon.py --input-folder path\to\presets --output-folder path\to\nikon-profiles
 ```
 
+Export an NP3/NCP file to an approximate XMP preset:
+
+```powershell
+python photo_preset_to_nikon.py --export-xmp --input path\to\profile.np3 --output path\to\preset.xmp
+```
+
 ## GitHub Publishing Notes
 
 Recommended repo contents:
@@ -127,6 +153,8 @@ Recommended repo contents:
 - `np3_data.py`
 - `PICCON01.NP3`
 - `requirements.txt`
+- `pyside_converter.py`
+- `launch_pyside_converter.bat`
 - `launch_converter.bat`
 - `reset_shortcut.bat`
 - `recreate_shortcut.py`

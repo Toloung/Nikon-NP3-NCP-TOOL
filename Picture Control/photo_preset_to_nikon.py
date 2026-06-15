@@ -4,6 +4,7 @@ import json
 import os
 import re
 import sys
+import uuid
 import xml.etree.ElementTree as ET
 import tkinter as tk
 from pathlib import Path
@@ -372,6 +373,77 @@ def run_folder(input_folder: Path, output_folder: Path, extension: str):
         convert_file(source_file, dest_file)
 
 
+def normalize_xmp_output_path(output_path: Path) -> Path:
+    return output_path if output_path.suffix.lower() == '.xmp' else output_path.with_suffix('.xmp')
+
+
+def clamp_xmp_value(value: float, minimum: int = -100, maximum: int = 100) -> int:
+    return max(minimum, min(maximum, int(round(value))))
+
+
+def map_nikon_to_photoshop(options: dict, source_path: Path | None = None) -> dict:
+    name = str(options.get('name') or (source_path.stem if source_path else 'Converted'))[:64]
+    contrast = clamp_xmp_value(((options.get('contrast') or 75) - 75) / 0.6)
+    highlights = clamp_xmp_value((options.get('highlights') or 0) / 0.5)
+    shadows = clamp_xmp_value((options.get('shadows') or 0) / 0.5)
+    whites = clamp_xmp_value((options.get('whiteLevel') or 0) / 0.25)
+    blacks = clamp_xmp_value((options.get('blackLevel') or 0) / 0.25)
+    saturation = clamp_xmp_value((options.get('saturation') or 0) / 0.5)
+    clarity = clamp_xmp_value((float(options.get('clarity') or 1.0) - 1.0) * 20)
+
+    return {
+        'PresetName': name or 'Converted',
+        'Contrast2012': contrast,
+        'Highlights2012': highlights,
+        'Shadows2012': shadows,
+        'Whites2012': whites,
+        'Blacks2012': blacks,
+        'Saturation': saturation,
+        'Clarity2012': clarity,
+    }
+
+
+def write_xmp_preset(settings: dict, output_path: Path) -> Path:
+    output_path = normalize_xmp_output_path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    x_ns = 'adobe:ns:meta/'
+    rdf_ns = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#'
+    crs_ns = 'http://ns.adobe.com/camera-raw-settings/1.0/'
+    ET.register_namespace('x', x_ns)
+    ET.register_namespace('rdf', rdf_ns)
+    ET.register_namespace('crs', crs_ns)
+
+    root = ET.Element(f'{{{x_ns}}}xmpmeta')
+    rdf = ET.SubElement(root, f'{{{rdf_ns}}}RDF')
+    description = ET.SubElement(rdf, f'{{{rdf_ns}}}Description')
+    description.set(f'{{{rdf_ns}}}about', '')
+    description.set(f'{{{crs_ns}}}PresetType', 'Normal')
+    description.set(f'{{{crs_ns}}}UUID', str(uuid.uuid4()).upper())
+    description.set(f'{{{crs_ns}}}SupportsAmount', 'False')
+    description.set(f'{{{crs_ns}}}SupportsColor', 'True')
+    description.set(f'{{{crs_ns}}}SupportsMonochrome', 'True')
+    description.set(f'{{{crs_ns}}}SupportsHighDynamicRange', 'True')
+    description.set(f'{{{crs_ns}}}SupportsNormalDynamicRange', 'True')
+    description.set(f'{{{crs_ns}}}ProcessVersion', '15.4')
+    description.set(f'{{{crs_ns}}}ConvertToGrayscale', 'False')
+
+    for key, value in settings.items():
+        description.set(f'{{{crs_ns}}}{key}', str(value))
+
+    tree = ET.ElementTree(root)
+    ET.indent(tree, space='  ')
+    tree.write(output_path, encoding='utf-8', xml_declaration=True)
+    print(f'Wrote approximate XMP preset: {output_path}')
+    return output_path
+
+
+def export_nikon_profile_to_xmp(input_path: Path, output_path: Path) -> Path:
+    options = parse_np3_preview_options(input_path)
+    settings = map_nikon_to_photoshop(options, input_path)
+    return write_xmp_preset(settings, output_path)
+
+
 class NikonConverterGUI:
     def __init__(self, root):
         self.root = root
@@ -447,6 +519,7 @@ class NikonConverterGUI:
         tk.Button(utilities_frame, text='Premade Presets', command=self.open_preset_browser).grid(row=0, column=1, sticky='ew', padx=6, pady=3)
         tk.Button(utilities_frame, text='Repair/Export', command=self.repair_profile_file).grid(row=0, column=2, sticky='ew', padx=6, pady=3)
         tk.Button(utilities_frame, text='Repair to SD', command=self.repair_profile_to_camera).grid(row=0, column=3, sticky='ew', padx=(6, 0), pady=3)
+        tk.Button(utilities_frame, text='NP3/NCP 转 XMP', command=self.export_profile_to_xmp).grid(row=1, column=0, columnspan=4, sticky='ew', pady=(8, 3))
 
         format_frame = tk.LabelFrame(main_frame, text='Output Format', padx=10, pady=10)
         format_frame.grid(row=3, column=1, sticky='nsew', padx=(8, 0), pady=(0, 10))
@@ -820,6 +893,37 @@ class NikonConverterGUI:
 
         self.save_np3_source_to_camera(input_file)
 
+    def export_profile_to_xmp(self):
+        path = filedialog.askopenfilename(
+            title='Select NP3/NCP file to export as XMP',
+            filetypes=[('Nikon profile', '*.np3;*.ncp')]
+        )
+        if not path:
+            return
+
+        input_file = Path(path)
+        try:
+            self.show_render_preview(parse_np3_preview_options(input_file), 'NP3/NCP to XMP Preview')
+        except Exception:
+            pass
+
+        save_path = filedialog.asksaveasfilename(
+            title='Save approximate XMP preset',
+            defaultextension='.xmp',
+            filetypes=[('XMP preset', '*.xmp')],
+            initialfile=f'{input_file.stem}_approx.xmp',
+        )
+        if not save_path:
+            return
+
+        try:
+            output_path = export_nikon_profile_to_xmp(input_file, Path(save_path))
+            messagebox.showinfo('Success', f'Exported approximate XMP preset:\n{output_path}')
+            self.update_status(f'Exported {input_file.name} as approximate XMP')
+        except Exception as exc:
+            messagebox.showerror('Error', f'XMP export failed: {exc}')
+            self.update_status('XMP export failed')
+
     def show_np3_preview(self, options: dict):
         preview_window = tk.Toplevel(self.root)
         preview_window.title('NP3 Preview')
@@ -992,9 +1096,12 @@ def main():
     parser.add_argument('--input-folder', type=Path, help='Input folder containing .xmp files')
     parser.add_argument('--output-folder', type=Path, help='Output folder for Nikon profile files')
     parser.add_argument('--format', choices=['np3', 'ncp'], default='np3', help='Output extension to create')
+    parser.add_argument('--export-xmp', action='store_true', help='Export an NP3/NCP file to an approximate XMP preset')
     args = parser.parse_args()
 
-    if args.input and args.output:
+    if args.export_xmp and args.input and args.output:
+        export_nikon_profile_to_xmp(args.input, args.output)
+    elif args.input and args.output:
         output_path = normalize_output_path(args.output, args.format)
         convert_file(args.input, output_path)
     elif args.input_folder and args.output_folder:
