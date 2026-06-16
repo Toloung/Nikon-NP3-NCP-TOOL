@@ -34,6 +34,9 @@ PICCON_RE = re.compile(r'^PICCON([0-9]{2})\.(?:NP3|NCP)$', re.IGNORECASE)
 MAX_PICCON_NUMBER = 99
 PREVIEW_WIDTH = 360
 PREVIEW_HEIGHT = 180
+NP3_EXTRA_RECORD_START = 206
+NP3_EXTRA_RECORD_LENGTH = 40
+NP3_TO_NP2_VERSION = b'0210'
 
 XMP_TO_KEY = {
     'Exposure2012': 'exposure',
@@ -399,6 +402,43 @@ def run_folder(input_folder: Path, output_folder: Path, extension: str):
         convert_file(source_file, dest_file)
 
 
+def normalize_np2_output_path(output_path: Path) -> Path:
+    return output_path if output_path.suffix.lower() == '.np2' else output_path.with_suffix('.NP2')
+
+
+def get_picture_control_version(data: bytes) -> str:
+    if not data.startswith(b'NCP\x00'):
+        return ''
+    if len(data) >= 16 and data[11] == 0x04:
+        return data[12:16].decode('ascii', errors='ignore')
+    if len(data) >= 16 and data[11] == 0x24:
+        return data[12:16].decode('ascii', errors='ignore')
+    return ''
+
+
+def convert_np3_bytes_to_np2(data: bytes) -> bytes:
+    version = get_picture_control_version(data)
+    if not version.startswith('03'):
+        raise ValueError(f'Input is not an NP3-format Picture Control file. Detected version: {version or "unknown"}')
+
+    marker_offset = data.find(b'BI0')
+    if marker_offset < NP3_EXTRA_RECORD_START + NP3_EXTRA_RECORD_LENGTH:
+        raise ValueError('Input NP3 file does not have the expected flexible color record layout.')
+
+    output = bytearray(data[:NP3_EXTRA_RECORD_START] + data[NP3_EXTRA_RECORD_START + NP3_EXTRA_RECORD_LENGTH:])
+    output[12:16] = NP3_TO_NP2_VERSION
+    output[NP3_EXTRA_RECORD_START - 1] = 0x01
+    return bytes(output)
+
+
+def convert_np3_file_to_np2(input_path: Path, output_path: Path) -> Path:
+    output_path = normalize_np2_output_path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(convert_np3_bytes_to_np2(input_path.read_bytes()))
+    print(f'Wrote Nikon NP2 profile: {output_path}')
+    return output_path
+
+
 def normalize_xmp_output_path(output_path: Path) -> Path:
     return output_path if output_path.suffix.lower() == '.xmp' else output_path.with_suffix('.xmp')
 
@@ -546,6 +586,7 @@ class NikonConverterGUI:
         tk.Button(utilities_frame, text='Repair/Export', command=self.repair_profile_file).grid(row=0, column=2, sticky='ew', padx=6, pady=3)
         tk.Button(utilities_frame, text='Repair to SD', command=self.repair_profile_to_camera).grid(row=0, column=3, sticky='ew', padx=(6, 0), pady=3)
         tk.Button(utilities_frame, text='NP3/NCP 转 XMP', command=self.export_profile_to_xmp).grid(row=1, column=0, columnspan=4, sticky='ew', pady=(8, 3))
+        tk.Button(utilities_frame, text='NP3 转 NP2', command=self.convert_np3_to_np2).grid(row=2, column=0, columnspan=4, sticky='ew', pady=(8, 3))
 
         format_frame = tk.LabelFrame(main_frame, text='Output Format', padx=10, pady=10)
         format_frame.grid(row=3, column=1, sticky='nsew', padx=(8, 0), pady=(0, 10))
@@ -950,6 +991,32 @@ class NikonConverterGUI:
             messagebox.showerror('Error', f'XMP export failed: {exc}')
             self.update_status('XMP export failed')
 
+    def convert_np3_to_np2(self):
+        path = filedialog.askopenfilename(
+            title='Select NP3 file to convert to NP2',
+            filetypes=[('Nikon NP3 profile', '*.np3')]
+        )
+        if not path:
+            return
+
+        input_file = Path(path)
+        save_path = filedialog.asksaveasfilename(
+            title='Save NP2 file',
+            defaultextension='.np2',
+            filetypes=[('Nikon NP2 profile', '*.np2')],
+            initialfile=f'{input_file.stem}.NP2',
+        )
+        if not save_path:
+            return
+
+        try:
+            output_path = convert_np3_file_to_np2(input_file, Path(save_path))
+            messagebox.showinfo('Success', f'Converted to NP2:\n{output_path}')
+            self.update_status(f'Converted {input_file.name} to NP2')
+        except Exception as exc:
+            messagebox.showerror('Error', f'NP3 to NP2 conversion failed: {exc}')
+            self.update_status('NP3 to NP2 conversion failed')
+
     def show_np3_preview(self, options: dict):
         preview_window = tk.Toplevel(self.root)
         preview_window.title('NP3 Preview')
@@ -1123,9 +1190,12 @@ def main():
     parser.add_argument('--output-folder', type=Path, help='Output folder for Nikon profile files')
     parser.add_argument('--format', choices=['np3', 'ncp'], default=get_default_output_format(), help='Output extension to create')
     parser.add_argument('--export-xmp', action='store_true', help='Export an NP3/NCP file to an approximate XMP preset')
+    parser.add_argument('--np3-to-np2', action='store_true', help='Convert an NP3 file to NP2 by removing NP3-only records')
     args = parser.parse_args()
 
-    if args.export_xmp and args.input and args.output:
+    if args.np3_to_np2 and args.input and args.output:
+        convert_np3_file_to_np2(args.input, args.output)
+    elif args.export_xmp and args.input and args.output:
         export_nikon_profile_to_xmp(args.input, args.output)
     elif args.input and args.output:
         output_path = normalize_output_path(args.output, args.format)

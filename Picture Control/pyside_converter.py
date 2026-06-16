@@ -34,6 +34,7 @@ from photo_preset_to_nikon import (
     PICCON_RE,
     apply_preview_adjustment,
     convert_file,
+    convert_np3_file_to_np2,
     export_nikon_profile_to_xmp,
     find_default_custompc_path,
     find_next_piccon_path,
@@ -358,6 +359,7 @@ class NikonPySideWindow(QMainWindow):
         tools_layout.addWidget(make_button("修复/导出", self.repair_profile_file), 0, 1)
         tools_layout.addWidget(make_button("修复到 SD 卡", self.repair_profile_to_camera), 1, 0)
         tools_layout.addWidget(make_button("NP3/NCP 转 XMP", self.export_profile_to_xmp), 1, 1)
+        tools_layout.addWidget(make_button("NP3 转 NP2", self.convert_np3_to_np2), 2, 0, 1, 2)
 
         folder_group = QGroupBox("文件夹批量转换")
         self.input_folder_label = QLabel("输入文件夹：未选择")
@@ -763,6 +765,30 @@ class NikonPySideWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(self, "错误", f"导出近似 XMP 失败：{exc}")
             self.update_status("导出近似 XMP 失败")
+
+    def convert_np3_to_np2(self):
+        path, _ = QFileDialog.getOpenFileName(self, "选择要转换为 NP2 的 NP3 文件", "", "Nikon NP3 文件 (*.np3)")
+        if not path:
+            return
+        input_file = Path(path)
+
+        default_name = f"{input_file.stem}.NP2"
+        save_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "保存 NP2 文件",
+            default_name,
+            "Nikon NP2 文件 (*.np2);;所有文件 (*.*)",
+        )
+        if not save_path:
+            return
+
+        try:
+            output_path = convert_np3_file_to_np2(input_file, Path(save_path))
+            QMessageBox.information(self, "完成", f"已转换为 NP2：\n{output_path}")
+            self.update_status(f"已将 {input_file.name} 转换为 NP2")
+        except Exception as exc:
+            QMessageBox.critical(self, "错误", f"NP3 转 NP2 失败：{exc}")
+            self.update_status("NP3 转 NP2 失败")
 
     def open_preset_browser(self):
         root = find_recipe_root()

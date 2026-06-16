@@ -16,6 +16,7 @@ For Chinese installation and step-by-step usage instructions, see:
 - Save repaired files directly to the next open `PICCON##` slot on an SD card.
 - Convert Photoshop/Lightroom XMP preset metadata into Nikon-style NP3/NCP output.
 - Export NP3/NCP files to approximate Adobe XMP presets.
+- Convert NP3 files to NP2 by removing NP3-only records.
 - Browse a local folder of premade Nikon recipe NP3 files.
 - Preview XMP conversions, NP3/NCP repairs, and premade recipes against a generated sample scene or your own JPG/PNG.
 - Rotate preview images without modifying the original image file.
@@ -142,6 +143,12 @@ Export an NP3/NCP file to an approximate XMP preset:
 
 ```powershell
 python photo_preset_to_nikon.py --export-xmp --input path\to\profile.np3 --output path\to\preset.xmp
+```
+
+Convert an NP3 file to NP2:
+
+```powershell
+python photo_preset_to_nikon.py --np3-to-np2 --input path\to\profile.np3 --output path\to\profile.np2
 ```
 
 ## GitHub Publishing Notes
