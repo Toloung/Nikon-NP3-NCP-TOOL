@@ -39,6 +39,8 @@ from photo_preset_to_nikon import (
     find_next_piccon_path,
     find_recipe_root,
     get_piccon_filename,
+    get_default_output_format,
+    get_template_path,
     map_photoshop_to_nikon,
     normalize_output_path,
     parse_np3_preview_options,
@@ -56,7 +58,6 @@ except ImportError:
 
 
 APP_TITLE = "Nikon NP3/NCP 工具"
-TEMPLATE_PATH = Path(__file__).with_name("PICCON01.NP3")
 PREVIEW_SIZE = (520, 260)
 
 
@@ -319,10 +320,11 @@ class NikonPySideWindow(QMainWindow):
         self.sample_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         self.rotation_label = QLabel("旋转：0 度")
-        self.output_name = QLineEdit(get_piccon_filename(1, "np3"))
+        self.output_name = QLineEdit(get_piccon_filename(1, get_default_output_format()))
 
         self.format_combo = QComboBox()
         self.format_combo.addItems(["NP3", "NCP"])
+        self.format_combo.setCurrentText(get_default_output_format().upper())
         self.format_combo.currentTextChanged.connect(self.refresh_piccon_name)
 
         source_group = QGroupBox("单个 XMP")
@@ -654,7 +656,7 @@ class NikonPySideWindow(QMainWindow):
         try:
             camera_folder.mkdir(parents=True, exist_ok=True)
             camera_file = find_next_piccon_path(camera_folder, self.output_format())
-            repair_np3_file(source_path, camera_file, template_path=TEMPLATE_PATH)
+            repair_np3_file(source_path, camera_file, template_path=get_template_path(self.output_format()))
             self.output_name.setText(camera_file.name)
             QMessageBox.information(self, "完成", f"已保存修复后的预设：\n{camera_file}")
             self.update_status(f"已将 {source_path.name} 保存为 {camera_file.name}")
@@ -675,7 +677,7 @@ class NikonPySideWindow(QMainWindow):
 
         try:
             output_path = normalize_output_path(Path(path), self.output_format())
-            repair_np3_file(source_path, output_path, template_path=TEMPLATE_PATH)
+            repair_np3_file(source_path, output_path, template_path=get_template_path(self.output_format()))
             QMessageBox.information(self, "完成", f"已导出修复后的预设：\n{output_path}")
             self.update_status(f"已导出修复后的预设：{output_path.name}")
         except Exception as exc:
@@ -707,7 +709,7 @@ class NikonPySideWindow(QMainWindow):
             return
 
         try:
-            repair_np3_file(input_file, Path(save_path), template_path=TEMPLATE_PATH)
+            repair_np3_file(input_file, Path(save_path), template_path=get_template_path(input_file.suffix.lstrip(".")))
             QMessageBox.information(self, "完成", f"已保存修复后的配置文件：\n{save_path}")
             self.update_status(f"已修复 {input_file.name} -> {Path(save_path).name}")
         except Exception as exc:

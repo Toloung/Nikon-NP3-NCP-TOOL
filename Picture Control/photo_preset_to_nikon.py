@@ -26,6 +26,10 @@ LOCAL_RECIPE_DIRS = (
     PROJECT_DIR / 'Nikon-Recipes-main',
     PROJECT_DIR.parent / 'Nikon-Recipes-main',
 )
+TEMPLATE_PATHS = {
+    'np3': PROJECT_DIR / 'PICCON01.NP3',
+    'ncp': PROJECT_DIR / 'PICCON01.NCP',
+}
 PICCON_RE = re.compile(r'^PICCON([0-9]{2})\.(?:NP3|NCP)$', re.IGNORECASE)
 MAX_PICCON_NUMBER = 99
 PREVIEW_WIDTH = 360
@@ -158,6 +162,27 @@ def normalize_output_path(output_path: Path, format: str) -> Path:
     if output_path.suffix.lower() not in ('.np3', '.ncp'):
         return output_path.with_suffix(suffix)
     return output_path.with_suffix(suffix)
+
+
+def get_template_path(format: str | None = None) -> Path | None:
+    if format:
+        template_path = TEMPLATE_PATHS.get(format.lower())
+        if template_path and template_path.exists():
+            return template_path
+
+    for template_path in TEMPLATE_PATHS.values():
+        if template_path.exists():
+            return template_path
+
+    return None
+
+
+def get_default_output_format() -> str:
+    if TEMPLATE_PATHS['np3'].exists():
+        return 'np3'
+    if TEMPLATE_PATHS['ncp'].exists():
+        return 'ncp'
+    return 'np3'
 
 
 def get_piccon_filename(number: int, format: str) -> str:
@@ -350,10 +375,11 @@ def create_preview_from_file(sample_path: Path, options: dict, width: int, heigh
 def write_nikon_profile(profile: dict, output_path: Path):
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if output_path.suffix.lower() in ('.np3', '.ncp'):
-        data = serialize_np3(profile)
+        output_format = output_path.suffix.lower().lstrip('.')
+        data = serialize_np3(profile, template_path=get_template_path(output_format))
         with output_path.open('wb') as f:
             f.write(data)
-        print(f'Wrote Nikon NP3 binary profile: {output_path}')
+        print(f'Wrote Nikon {output_format.upper()} binary profile: {output_path}')
     else:
         with output_path.open('w', encoding='utf-8') as f:
             json.dump(profile, f, indent=2)
@@ -457,7 +483,7 @@ class NikonConverterGUI:
         self.output_folder = None
         self.sample_image_path = None
         self.sample_rotation = 0
-        self.output_format = tk.StringVar(value='np3')
+        self.output_format = tk.StringVar(value=get_default_output_format())
         self.output_format.trace_add('write', self.refresh_piccon_name)
         self.output_name_var = tk.StringVar(value=get_piccon_filename(1, self.output_format.get()))
         self.sample_image_var = tk.StringVar(value='Generated sample scene')
@@ -720,7 +746,7 @@ class NikonConverterGUI:
         try:
             camera_folder.mkdir(parents=True, exist_ok=True)
             camera_file = find_next_piccon_path(camera_folder, self.output_format.get())
-            repair_np3_file(source_path, camera_file, template_path=Path(__file__).with_name('PICCON01.NP3'))
+            repair_np3_file(source_path, camera_file, template_path=get_template_path(self.output_format.get()))
             self.output_name_var.set(camera_file.name)
             messagebox.showinfo('Success', f'Saved repaired preset:\n{camera_file}')
             self.update_status(f'Saved {source_path.name} as {camera_file.name}')
@@ -741,7 +767,7 @@ class NikonConverterGUI:
 
         try:
             output_path = normalize_output_path(Path(save_path), self.output_format.get())
-            repair_np3_file(source_path, output_path, template_path=Path(__file__).with_name('PICCON01.NP3'))
+            repair_np3_file(source_path, output_path, template_path=get_template_path(self.output_format.get()))
             messagebox.showinfo('Success', f'Exported repaired preset:\n{output_path}')
             self.update_status(f'Exported repaired preset: {output_path.name}')
         except Exception as exc:
@@ -870,7 +896,7 @@ class NikonConverterGUI:
             return
 
         try:
-            repair_np3_file(input_file, Path(save_path), template_path=Path(__file__).with_name('PICCON01.NP3'))
+            repair_np3_file(input_file, Path(save_path), template_path=get_template_path(input_file.suffix.lstrip('.')))
             messagebox.showinfo('Success', f'Repaired profile saved:\n{save_path}')
             self.update_status(f'Repaired {input_file.name} -> {Path(save_path).name}')
         except Exception as exc:
@@ -1095,7 +1121,7 @@ def main():
     parser.add_argument('--output', type=Path, help='Output file path (.np3 or .ncp)')
     parser.add_argument('--input-folder', type=Path, help='Input folder containing .xmp files')
     parser.add_argument('--output-folder', type=Path, help='Output folder for Nikon profile files')
-    parser.add_argument('--format', choices=['np3', 'ncp'], default='np3', help='Output extension to create')
+    parser.add_argument('--format', choices=['np3', 'ncp'], default=get_default_output_format(), help='Output extension to create')
     parser.add_argument('--export-xmp', action='store_true', help='Export an NP3/NCP file to an approximate XMP preset')
     args = parser.parse_args()
 

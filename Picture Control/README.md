@@ -42,9 +42,9 @@ Premade recipe files used during development came from:
 
 ## Template File
 
-Repair depends on a known-good camera-exported NP3 template named `PICCON01.NP3` in the project folder.
+Repair depends on a known-good camera-exported template in the project folder. Use `PICCON01.NP3` for NP3 output or `PICCON01.NCP` for NCP output.
 
-The included template is used as the safe binary shell for repaired files. For best compatibility with your own camera, export a working Picture Control from your camera, name it `PICCON01.NP3`, and replace the template in this folder.
+The included template is used as the safe binary shell for repaired files. For best compatibility with your own camera, export a working Picture Control from your camera, name it `PICCON01.NP3` or `PICCON01.NCP`, and replace the template in this folder.
 
 ## Install
 
@@ -151,7 +151,7 @@ Recommended repo contents:
 - `photo_preset_to_nikon.py`
 - `np3_serializer.py`
 - `np3_data.py`
-- `PICCON01.NP3`
+- `PICCON01.NP3` or `PICCON01.NCP`
 - `requirements.txt`
 - `pyside_converter.py`
 - `launch_pyside_converter.bat`

@@ -37,11 +37,24 @@ from np3_data import (
     OFFSET_WHITE_LEVEL,
 )
 
-TEMPLATE_FILE = Path(__file__).with_name('PICCON01.NP3')
+TEMPLATE_FILES = (
+    Path(__file__).with_name('PICCON01.NP3'),
+    Path(__file__).with_name('PICCON01.NCP'),
+)
+
+
+def find_default_template_file() -> Path | None:
+    for template_file in TEMPLATE_FILES:
+        if template_file.exists():
+            return template_file
+    return None
+
+
+TEMPLATE_FILE = find_default_template_file()
 
 
 def load_template_bytes() -> bytes | None:
-    if not TEMPLATE_FILE.exists():
+    if TEMPLATE_FILE is None or not TEMPLATE_FILE.exists():
         return None
     data = TEMPLATE_FILE.read_bytes()
     if len(data) < len(BASE):
@@ -73,12 +86,26 @@ def round_degree(value: float) -> int:
     return int(((value % 360) + 360) % 360)
 
 
-def serialize_np3(options: dict[str, Any]) -> bytes:
+def load_template_bytes_from_path(template_path: Path) -> bytes:
+    data = template_path.read_bytes()
+    if len(data) < len(BASE):
+        raise ValueError(f'Template file is too small: {template_path}')
+    if not data.startswith(b'NCP\x00'):
+        raise ValueError(f'Template file is not a Nikon Picture Control binary: {template_path}')
+    return data
+
+
+def serialize_np3(options: dict[str, Any], template_path: Path | None = None) -> bytes:
     name = str(options.get('name', 'Converted')).strip()[:19]
     if not name:
         name = 'Converted'
 
-    buf = bytearray(TEMPLATE_BYTES if TEMPLATE_BYTES is not None else BASE)
+    if template_path is not None:
+        template_bytes = load_template_bytes_from_path(template_path)
+    else:
+        template_bytes = TEMPLATE_BYTES if TEMPLATE_BYTES is not None else BASE
+
+    buf = bytearray(template_bytes)
     protected_start = find_protected_chunk_start(buf)
     write_name(buf, name)
     if can_write_range(protected_start, OFFSET_SHARPENING, 1):
