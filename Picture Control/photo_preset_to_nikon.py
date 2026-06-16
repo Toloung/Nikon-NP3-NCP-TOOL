@@ -1,6 +1,7 @@
 import argparse
 import colorsys
 import json
+import math
 import os
 import re
 import sys
@@ -428,7 +429,26 @@ def convert_np3_bytes_to_np2(data: bytes) -> bytes:
     output = bytearray(data[:NP3_EXTRA_RECORD_START] + data[NP3_EXTRA_RECORD_START + NP3_EXTRA_RECORD_LENGTH:])
     output[12:16] = NP3_TO_NP2_VERSION
     output[NP3_EXTRA_RECORD_START - 1] = 0x01
+    normalize_np2_step_fields(output)
     return bytes(output)
+
+
+def normalize_np2_step_fields(data: bytearray) -> None:
+    pos = 46
+    while pos + 10 <= len(data):
+        if data[pos:pos + 3] == b'BI0' or data[pos + 1:pos + 4] == b'BI0':
+            return
+        if data[pos + 1:pos + 5] == b'\0\0\0\0' and data[pos + 5] == 0x02:
+            field_id = data[pos]
+            value = data[pos + 6]
+            step = data[pos + 7]
+            if field_id in (0x06, 0x0a) and step == 0x04 and value not in (0x01, 0xff):
+                delta = value - 0x80
+                quantized = 0x80 + int(math.floor(delta / 4 + 0.5)) * 4
+                data[pos + 6] = max(0, min(255, quantized))
+            pos += 10
+        else:
+            pos += 1
 
 
 def convert_np3_file_to_np2(input_path: Path, output_path: Path) -> Path:
